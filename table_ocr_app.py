@@ -1,14 +1,14 @@
 import sys
 import os
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
-                             QLabel, QTableWidget, QTableWidgetItem, QHeaderView,
-                             QScrollArea, QMessageBox, QPushButton, QVBoxLayout,
+                             QLabel, QScrollArea, QMessageBox, QPushButton, QVBoxLayout,
                              QFileDialog)
 from PyQt6.QtGui import QPixmap
 from PyQt6.QtCore import Qt
 
-# Import the new OCR class
+# Import the new classes
 from ocr import OCR
+from table_widget import TableWidget
 
 class TableOCRApp(QMainWindow):
     def __init__(self):
@@ -74,15 +74,8 @@ class TableOCRApp(QMainWindow):
         main_layout.addWidget(left_panel_widget, 1)
 
         # --- Right Panel: Table Display ---
-        self.table_widget = QTableWidget()
-        self.table_widget.setStyleSheet("QTableWidget { border: 1px solid lightgrey; }")
+        self.table_widget = TableWidget(self)
         main_layout.addWidget(self.table_widget, 1)
-
-        # Initial empty table setup
-        self.table_widget.setRowCount(0)
-        self.table_widget.setColumnCount(4)
-        self.table_widget.setHorizontalHeaderLabels([f"Column {i+1}" for i in range(4)])
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
 
     def open_image_dialog(self):
         """Opens a file dialog to select an image and processes it."""
@@ -113,9 +106,7 @@ class TableOCRApp(QMainWindow):
             QMessageBox.warning(self, "Error", error_msg)
             self.image_label.setText(error_msg)
             self.image_path = None
-            self.table_widget.clear()
-            self.table_widget.setRowCount(0)
-            self.table_widget.setColumnCount(0)
+            self.table_widget.clear_table()
             return
 
         scaled_pixmap = pixmap.scaled(self.image_label.size(), Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
@@ -145,35 +136,11 @@ class TableOCRApp(QMainWindow):
     def on_ocr_started(self):
         """Handles the start of OCR processing."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
-        self.table_widget.clear()
-        self.table_widget.setRowCount(0)
-        self.table_widget.setColumnCount(0)
+        self.table_widget.clear_table()
         
     def on_ocr_completed(self, header, data):
         """Handles successful OCR completion with data."""
-        num_rows = len(data)
-        num_cols = len(header) if header else (len(data[0]) if data else 4)
-
-        self.table_widget.setRowCount(num_rows)
-        self.table_widget.setColumnCount(num_cols)
-
-        if header:
-            self.table_widget.setHorizontalHeaderLabels(header)
-        else:
-            self.table_widget.setHorizontalHeaderLabels([f"Column {i+1}" for i in range(num_cols)])
-
-        for row_idx, row_data in enumerate(data):
-            current_cols = len(row_data)
-            if current_cols < num_cols:
-                row_data.extend([""] * (num_cols - current_cols))
-            elif current_cols > num_cols:
-                row_data = row_data[:num_cols]
-
-            for col_idx, cell_data in enumerate(row_data):
-                self.table_widget.setItem(row_idx, col_idx, QTableWidgetItem(str(cell_data)))
-
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
-        self.table_widget.verticalHeader().setSectionResizeMode(QHeaderView.ResizeMode.ResizeToContents)
+        self.table_widget.display_data(header, data)
         QApplication.restoreOverrideCursor()
         
     def on_ocr_error(self, error_message):
@@ -181,18 +148,13 @@ class TableOCRApp(QMainWindow):
         QApplication.restoreOverrideCursor()
         QMessageBox.critical(self, "OCR Error", f"Failed to process image with OCR: {error_message}")
         print(f"Error during OCR processing: {error_message}")
-        self.table_widget.clear()
-        self.table_widget.setRowCount(0)
-        self.table_widget.setColumnCount(0)
+        self.table_widget.clear_table()
         
     def on_ocr_no_results(self):
         """Handles the case when OCR completes but finds no data."""
         QApplication.restoreOverrideCursor()
         QMessageBox.information(self, "OCR Result", "No table data could be extracted from the image.")
-        num_cols = 4
-        self.table_widget.setColumnCount(num_cols)
-        self.table_widget.setHorizontalHeaderLabels([f"Column {i+1}" for i in range(num_cols)])
-        self.table_widget.horizontalHeader().setSectionResizeMode(QHeaderView.ResizeMode.Stretch)
+        self.table_widget.setup_empty_table()
 
 
 def main():
