@@ -1,5 +1,6 @@
 import os
 import sys
+from PyQt6.QtCore import QObject, pyqtSignal
 
 try:
     from google.cloud import vision
@@ -8,18 +9,29 @@ except ImportError:
     print("Please install it using: pip install google-cloud-vision")
     sys.exit(1)
 
-class OCR:
-    def __init__(self):
+class OCR(QObject):
+    # Define signals
+    ocr_completed = pyqtSignal(list, list)  # Signal (header, data)
+    ocr_error = pyqtSignal(str)  # Signal for errors
+    ocr_started = pyqtSignal()  # Signal when OCR begins
+    ocr_no_results = pyqtSignal()  # Signal when OCR finds no data
+
+    def __init__(self, parent=None):
         """Initialize the OCR class that uses Google Cloud Vision API."""
+        super().__init__(parent)
         # Check for credentials environment variable
         if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
             print("Warning: GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.")
             print("You will need to set this before performing OCR operations.")
 
-    def get_table_data_from_image(self, image_path):
+    def process_image(self, image_path):
         """Detects document text in an image using Google Cloud Vision."""
+        self.ocr_started.emit()  # Signal the start of OCR processing
+        
         if not os.getenv('GOOGLE_APPLICATION_CREDENTIALS'):
-            raise EnvironmentError("GOOGLE_APPLICATION_CREDENTIALS environment variable is not set.")
+            error_msg = "GOOGLE_APPLICATION_CREDENTIALS environment variable is not set."
+            self.ocr_error.emit(error_msg)
+            raise EnvironmentError(error_msg)
 
         try:
             client = vision.ImageAnnotatorClient()
@@ -30,15 +42,21 @@ class OCR:
             response = client.document_text_detection(image=image)
 
             if response.error.message:
-                raise Exception(
-                    f"Vision API Error: {response.error.message}"
-                )
+                error_msg = f"Vision API Error: {response.error.message}"
+                self.ocr_error.emit(error_msg)
+                raise Exception(error_msg)
 
             header, data = self._analyze_document_layout(response)
-            return header, data
+            
+            if not data and not header:
+                self.ocr_no_results.emit()
+            else:
+                self.ocr_completed.emit(header, data)
 
         except Exception as e:
-            print(f"Error calling Google Cloud Vision API or processing response: {e}")
+            error_msg = f"Error calling Google Cloud Vision API or processing response: {e}"
+            print(error_msg)
+            self.ocr_error.emit(str(e))
             raise # Reraise the exception
 
     def _analyze_document_layout(self, response):
