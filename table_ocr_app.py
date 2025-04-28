@@ -143,10 +143,29 @@ class TableOCRApp(QMainWindow):
         left_panel_widget = QWidget()
         left_layout = QVBoxLayout(left_panel_widget)
 
+        # --- Button Row ---
+        button_layout = QHBoxLayout()
+
         # Load Image Button
         self.load_button = QPushButton("Load Image")
         self.load_button.clicked.connect(self.open_image_dialog)
-        left_layout.addWidget(self.load_button)
+        button_layout.addWidget(self.load_button)
+
+        # New Buttons
+        self.straighten_button = QPushButton("Straighten")
+        # self.straighten_button.clicked.connect(self.straighten_image) # Placeholder
+        button_layout.addWidget(self.straighten_button)
+
+        self.crop_button = QPushButton("Crop")
+        # self.crop_button.clicked.connect(self.crop_image) # Placeholder
+        button_layout.addWidget(self.crop_button)
+
+        self.ocr_button = QPushButton("OCR")
+        self.ocr_button.clicked.connect(self.load_ocr_data) # Connect to existing OCR function
+        button_layout.addWidget(self.ocr_button)
+
+        button_layout.addStretch() # Pushes buttons to the left
+        left_layout.addLayout(button_layout) # Add the button row layout
 
         # Image Display Area
         self.image_label = QLabel("Please load an image.")
@@ -188,8 +207,8 @@ class TableOCRApp(QMainWindow):
         if file_name:
             self.image_path = file_name
             self.display_image()
-            if self.image_path:
-                 self.load_ocr_data()
+            # if self.image_path: # Removed automatic OCR call
+            #      self.load_ocr_data()
 
     def display_image(self):
         """Loads and displays the selected image."""
