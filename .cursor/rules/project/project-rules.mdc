@@ -1,0 +1,27 @@
+---
+description: 
+globs: 
+alwaysApply: true
+---
+---
+description: This is a python PyQt6 application.
+globs: 
+alwaysApply: true
+---
+This is a python PyQt6 application.
+
+When I ask to analyze the app:
+
+Run the app with "python table_ocr_app.py"
+Fetch logs from the console
+Suggest performance improvements
+
+This rule helps generate documentation from code:
+
+Help me draft documentation by:
+
+Extracting code comments
+Analyzing README.md
+Generating markdown documentation
+
+
