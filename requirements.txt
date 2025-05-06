@@ -1,2 +1,3 @@
 PyQt6
-google-cloud-vision 
+google-cloud-vision
+opencv-python 
