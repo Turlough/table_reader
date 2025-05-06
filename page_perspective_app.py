@@ -262,6 +262,7 @@ class PerspectiveCorrectionApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.image_path = None
+        self.corrected_image = None  # Store the corrected image
         
         self.setWindowTitle("Page Perspective Correction")
         self.setGeometry(100, 100, 1000, 700)
@@ -276,10 +277,15 @@ class PerspectiveCorrectionApp(QMainWindow):
         self.load_button.clicked.connect(self.open_image_dialog)
         button_layout.addWidget(self.load_button)
         
-        self.reshape_button = QPushButton("Reshape")
+        self.reshape_button = QPushButton("Straighten")
         self.reshape_button.clicked.connect(self.reshape_image)
         self.reshape_button.setEnabled(False)
         button_layout.addWidget(self.reshape_button)
+        
+        self.save_button = QPushButton("Save")
+        self.save_button.clicked.connect(self.save_image)
+        self.save_button.setEnabled(False)
+        button_layout.addWidget(self.save_button)
         
         button_layout.addStretch()
         main_layout.addLayout(button_layout)
@@ -302,6 +308,8 @@ class PerspectiveCorrectionApp(QMainWindow):
             PerspectiveCorrectionApp.last_directory = os.path.dirname(file_name)
             self.image_widget.set_image(file_name)
             self.reshape_button.setEnabled(True)
+            self.save_button.setEnabled(False)  # Disable save button when new image is loaded
+            self.corrected_image = None  # Clear any previous corrected image
     
     def reshape_image(self):
         if not self.image_path:
@@ -321,18 +329,65 @@ class PerspectiveCorrectionApp(QMainWindow):
         # Convert back to PIL format to maintain orientation
         warped_pil = PIL.Image.fromarray(cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB))
         
+        # Store the corrected image
+        self.corrected_image = warped_pil
+        
+        # Display the corrected image
+        # Convert PIL Image to QPixmap for display
+        img_data = np.array(warped_pil)
+        height, width, channels = img_data.shape
+        
+        # Convert RGB (PIL) to QImage
+        bytes_per_line = channels * width
+        qimg = QImage(
+            img_data.data, 
+            width, 
+            height, 
+            bytes_per_line,
+            QImage.Format.Format_RGB888
+        )
+        
+        # Create QPixmap from QImage
+        pixmap = QPixmap.fromImage(qimg)
+        
+        # Update the image widget
+        self.image_widget.pixmap = pixmap
+        self.image_widget.orig_image = cv2.cvtColor(img_data, cv2.COLOR_RGB2BGR)
+        self.image_widget.update_scaled_pixmap()
+        
+        # Reset corners for the corrected image
+        self.image_widget.corners = []
+        self.image_widget.init_corners()
+        
+        self.image_widget.update()
+        
+        # Enable the save button
+        self.save_button.setEnabled(True)
+        
+    def save_image(self):
+        if not self.corrected_image:
+            return
+            
         # Save the result
         file_base, file_ext = os.path.splitext(self.image_path)
         output_path = f"{file_base}_cropped{file_ext}"
         
-        # Save with proper orientation
-        warped_pil.save(output_path)
-        
-        QMessageBox.information(
+        file_name, _ = QFileDialog.getSaveFileName(
             self,
-            "Image Saved",
-            f"Corrected image saved as {output_path}"
+            "Save Image",
+            output_path,
+            "Image Files (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All Files (*)"
         )
+        
+        if file_name:
+            # Save with proper orientation
+            self.corrected_image.save(file_name)
+            
+            QMessageBox.information(
+                self,
+                "Image Saved",
+                f"Corrected image saved as {file_name}"
+            )
 
 def main():
     app = QApplication(sys.argv)
