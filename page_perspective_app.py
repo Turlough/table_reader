@@ -256,6 +256,9 @@ class ImageWidget(QWidget):
         return cv2.getPerspectiveTransform(src_points, dst_points), int(width), int(height)
 
 class PerspectiveCorrectionApp(QMainWindow):
+    # Class variable to store the last opened directory
+    last_directory = os.path.expanduser("~")
+    
     def __init__(self):
         super().__init__()
         self.image_path = None
@@ -289,12 +292,14 @@ class PerspectiveCorrectionApp(QMainWindow):
         file_name, _ = QFileDialog.getOpenFileName(
             self,
             "Open Image",
-            os.path.expanduser("~"),
+            PerspectiveCorrectionApp.last_directory,  # Use last directory
             "Image Files (*.png *.jpg *.jpeg *.bmp *.tif *.tiff);;All Files (*)"
         )
         
         if file_name:
             self.image_path = file_name
+            # Update the last directory
+            PerspectiveCorrectionApp.last_directory = os.path.dirname(file_name)
             self.image_widget.set_image(file_name)
             self.reshape_button.setEnabled(True)
     
