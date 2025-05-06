@@ -6,6 +6,8 @@ from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
                              QLabel, QPushButton, QVBoxLayout, QFileDialog, QMessageBox)
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QImage
 from PyQt6.QtCore import Qt, QPoint, QRect, pyqtSignal
+import PIL.Image
+import PIL.ExifTags
 
 class CornerPoint:
     def __init__(self, x, y, radius=10):
@@ -30,22 +32,83 @@ class ImageWidget(QWidget):
         self.dragging_corner = None
         self.setMouseTracking(True)
         
+    def correct_orientation(self, image_path):
+        """Correct image orientation based on EXIF data"""
+        try:
+            # Open the image with PIL to read EXIF
+            img = PIL.Image.open(image_path)
+            
+            # Extract EXIF data
+            exif = {
+                PIL.ExifTags.TAGS[k]: v
+                for k, v in img._getexif().items()
+                if k in PIL.ExifTags.TAGS
+            } if hasattr(img, '_getexif') and img._getexif() is not None else {}
+            
+            # Get orientation tag (if exists)
+            orientation = exif.get('Orientation', 1)  # Default to 1 if no orientation found
+            
+            # Rotate the image according to EXIF orientation
+            if orientation == 1:
+                # Normal, no need to rotate
+                return img
+            elif orientation == 2:
+                # Mirror horizontal
+                return img.transpose(PIL.Image.Transpose.FLIP_LEFT_RIGHT)
+            elif orientation == 3:
+                # Rotate 180
+                return img.transpose(PIL.Image.Transpose.ROTATE_180)
+            elif orientation == 4:
+                # Mirror vertical
+                return img.transpose(PIL.Image.Transpose.FLIP_TOP_BOTTOM)
+            elif orientation == 5:
+                # Mirror horizontal and rotate 270 CW
+                return img.transpose(PIL.Image.Transpose.FLIP_LEFT_RIGHT).transpose(PIL.Image.Transpose.ROTATE_270)
+            elif orientation == 6:
+                # Rotate 90 CW
+                return img.transpose(PIL.Image.Transpose.ROTATE_270)
+            elif orientation == 7:
+                # Mirror horizontal and rotate 90 CW
+                return img.transpose(PIL.Image.Transpose.FLIP_LEFT_RIGHT).transpose(PIL.Image.Transpose.ROTATE_90)
+            elif orientation == 8:
+                # Rotate 270 CW
+                return img.transpose(PIL.Image.Transpose.ROTATE_90)
+            
+            return img
+        except Exception as e:
+            print(f"Error correcting orientation: {e}")
+            return PIL.Image.open(image_path)
+        
     def set_image(self, image_path):
-        self.pixmap = QPixmap(image_path)
+        # Correct orientation using EXIF data
+        pil_img = self.correct_orientation(image_path)
         
-        # Convert QPixmap to OpenCV format to preserve orientation
-        qimage = self.pixmap.toImage()
-        width = qimage.width()
-        height = qimage.height()
+        # Convert PIL Image to QPixmap for display
+        pil_img_rgb = pil_img.convert("RGB")
         
-        # Convert QImage to OpenCV format
-        ptr = qimage.constBits()
-        ptr.setsize(height * width * 4)
-        arr = np.frombuffer(ptr, np.uint8).reshape((height, width, 4))
+        # Use NumPy for conversion to avoid potential byte order issues
+        img_data = np.array(pil_img_rgb)
+        height, width, channels = img_data.shape
         
-        # Convert RGBA to BGR (OpenCV format)
-        self.orig_image = cv2.cvtColor(arr, cv2.COLOR_RGBA2BGR)
+        # Convert RGB (PIL) to BGR (OpenCV)
+        self.orig_image = cv2.cvtColor(img_data, cv2.COLOR_RGB2BGR)
         
+        # Convert RGB (PIL) to QImage
+        bytes_per_line = channels * width
+        qimg = QImage(
+            img_data.data, 
+            width, 
+            height, 
+            bytes_per_line,
+            QImage.Format.Format_RGB888
+        )
+        
+        # Create QPixmap from QImage
+        self.pixmap = QPixmap.fromImage(qimg)
+        
+        # Save the original PIL image for later use
+        self.pil_img = pil_img
+            
         self.update_scaled_pixmap()
         self.init_corners()
         self.update()
@@ -250,11 +313,15 @@ class PerspectiveCorrectionApp(QMainWindow):
         img = self.image_widget.orig_image
         warped_img = cv2.warpPerspective(img, transform_matrix, (width, height))
         
+        # Convert back to PIL format to maintain orientation
+        warped_pil = PIL.Image.fromarray(cv2.cvtColor(warped_img, cv2.COLOR_BGR2RGB))
+        
         # Save the result
         file_base, file_ext = os.path.splitext(self.image_path)
         output_path = f"{file_base}_cropped{file_ext}"
         
-        cv2.imwrite(output_path, warped_img)
+        # Save with proper orientation
+        warped_pil.save(output_path)
         
         QMessageBox.information(
             self,

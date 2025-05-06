@@ -1,3 +1,4 @@
 PyQt6
 google-cloud-vision
-opencv-python 
+opencv-python
+Pillow 
