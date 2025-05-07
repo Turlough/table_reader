@@ -15,6 +15,8 @@ class TableOCRApp(QMainWindow):
     def __init__(self):
         super().__init__()
         self.image_path = None
+        self.horizontal_lines = None
+        self.vertical_lines = None
         self.setWindowTitle("Handwritten Table OCR")
         self.setGeometry(100, 100, 1200, 750)
         
@@ -139,8 +141,11 @@ class TableOCRApp(QMainWindow):
 
     def toggle_lines_lock(self):
         """Toggles the lines lock state."""
-        is_locked = self.image_widget.toggle_lock()
+        is_locked, horizontal_lines, vertical_lines = self.image_widget.toggle_lock()
         self.lock_lines_button.setText("Unlock Lines" if is_locked else "Lock Lines")
+        if is_locked:
+            self.horizontal_lines = horizontal_lines
+            self.vertical_lines = vertical_lines
 
     # OCR-related methods
     def start_ocr(self):

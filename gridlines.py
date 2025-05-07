@@ -19,6 +19,7 @@ class Line:
     def __init__(self, start: LineEndpoint, end: LineEndpoint):
         self.start = start
         self.end = end
+        self.intersections: list[int, int] = list()
 
 class CustomLineWidget(QWidget):
     def __init__(self, parent=None):
@@ -75,6 +76,21 @@ class CustomLineWidget(QWidget):
         
         self.update()
         
+    def draw_intersection_points(self, painter):
+        """Draw circles at all intersection points in green."""
+        if not self.is_locked:
+            return
+            
+        # Set up green pen for intersection points
+        pen = QPen(QColor(0, 255, 0))  # Green color
+        pen.setWidth(2)
+        painter.setPen(pen)
+        
+        # Draw intersection points for each horizontal line
+        for line in self.horizontal_lines:
+            for x, y in line.intersections:
+                painter.drawEllipse(QPoint(x, y), 5, 5)  # Radius of 5 pixels
+
     def paintEvent(self, event):
         painter = QPainter(self)
         
@@ -121,6 +137,9 @@ class CustomLineWidget(QWidget):
             for line in self.vertical_lines:
                 painter.drawEllipse(QPoint(line.start.x, line.start.y), line.start.radius, line.start.radius)
                 painter.drawEllipse(QPoint(line.end.x, line.end.y), line.end.radius, line.end.radius)
+            
+            # Draw intersection points
+            self.draw_intersection_points(painter)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not self.is_locked:
@@ -179,6 +198,37 @@ class CustomLineWidget(QWidget):
         
         super().resizeEvent(event)
         
+    def calculate_intersections(self):
+        """Calculate intersection points between horizontal and vertical lines using general line intersection formula."""
+        for h_line in self.horizontal_lines:
+            h_line.intersections.clear()  # Clear any existing intersections
+            for v_line in self.vertical_lines:
+                # Get line segment endpoints
+                x1, y1 = h_line.start.x, h_line.start.y
+                x2, y2 = h_line.end.x, h_line.end.y
+                x3, y3 = v_line.start.x, v_line.start.y
+                x4, y4 = v_line.end.x, v_line.end.y
+                
+                # Calculate denominator for intersection formula
+                denominator = (x1 - x2) * (y3 - y4) - (y1 - y2) * (x3 - x4)
+                
+                # Check if lines are parallel (denominator = 0)
+                if abs(denominator) < 1e-10:  # Using small epsilon for floating point comparison
+                    continue
+                
+                # Calculate intersection point using line intersection formula
+                t = ((x1 - x3) * (y3 - y4) - (y1 - y3) * (x3 - x4)) / denominator
+                u = -((x1 - x2) * (y1 - y3) - (y1 - y2) * (x1 - x3)) / denominator
+                
+                # Check if intersection point is within both line segments (0 <= t <= 1 and 0 <= u <= 1)
+                if 0 <= t <= 1 and 0 <= u <= 1:
+                    # Calculate actual intersection point
+                    x = x1 + t * (x2 - x1)
+                    y = y1 + t * (y2 - y1)
+                    h_line.intersections.append([int(x), int(y)])
+
     def toggle_lock(self):
         self.is_locked = not self.is_locked
-        return self.is_locked 
+        if self.is_locked:
+            self.calculate_intersections()
+        return self.is_locked, self.horizontal_lines, self.vertical_lines 
