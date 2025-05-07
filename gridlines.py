@@ -15,11 +15,22 @@ class LineEndpoint:
         self.x = x
         self.y = y
 
+class Cell:
+    def __init__(self, top_left, top_right, bottom_left, bottom_right):
+        self.top_left = top_left
+        self.top_right = top_right
+        self.bottom_left = bottom_left
+        self.bottom_right = bottom_right
+        
+    def get_vertices(self):
+        return [self.top_left, self.top_right, self.bottom_right, self.bottom_left]
+
 class Line:
     def __init__(self, start: LineEndpoint, end: LineEndpoint):
         self.start = start
         self.end = end
         self.intersections: list[int, int] = list()
+        self.cells: list[Cell] = []  # Store the calculated cells here
 
 class CustomLineWidget(QWidget):
     def __init__(self, parent=None):
@@ -91,6 +102,37 @@ class CustomLineWidget(QWidget):
             for x, y in line.intersections:
                 painter.drawEllipse(QPoint(x, y), 5, 5)  # Radius of 5 pixels
 
+    def draw_cells(self, painter):
+        """Draw all cells in blue."""
+        if not self.is_locked:
+            return
+            
+        # Set up blue pen for cells
+        pen = QPen(QColor(0, 0, 255))  # Blue color
+        pen.setWidth(1)
+        painter.setPen(pen)
+        
+        # Draw cells for each horizontal line
+        for line in self.horizontal_lines:
+            for cell in line.cells:
+                # Draw the four sides of the cell
+                painter.drawLine(
+                    QPoint(cell.top_left[0], cell.top_left[1]),
+                    QPoint(cell.top_right[0], cell.top_right[1])
+                )
+                painter.drawLine(
+                    QPoint(cell.top_right[0], cell.top_right[1]),
+                    QPoint(cell.bottom_right[0], cell.bottom_right[1])
+                )
+                painter.drawLine(
+                    QPoint(cell.bottom_right[0], cell.bottom_right[1]),
+                    QPoint(cell.bottom_left[0], cell.bottom_left[1])
+                )
+                painter.drawLine(
+                    QPoint(cell.bottom_left[0], cell.bottom_left[1]),
+                    QPoint(cell.top_left[0], cell.top_left[1])
+                )
+
     def paintEvent(self, event):
         painter = QPainter(self)
         
@@ -140,6 +182,9 @@ class CustomLineWidget(QWidget):
             
             # Draw intersection points
             self.draw_intersection_points(painter)
+            
+            # Draw cells
+            self.draw_cells(painter)
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton and not self.is_locked:
@@ -227,8 +272,50 @@ class CustomLineWidget(QWidget):
                     y = y1 + t * (y2 - y1)
                     h_line.intersections.append([int(x), int(y)])
 
+    def calculate_cells(self):
+        """Calculate all cells in the grid from the intersections."""
+        self.cells = []
+        
+        # Sort intersections for each horizontal line by x-coordinate
+        for h_line in self.horizontal_lines:
+            h_line.intersections.sort(key=lambda p: p[0])
+        
+        # For each pair of consecutive horizontal lines
+        for i in range(len(self.horizontal_lines) - 1):
+            top_line = self.horizontal_lines[i]
+            bottom_line = self.horizontal_lines[i + 1]
+            
+            # For each pair of consecutive intersections
+            for j in range(len(top_line.intersections) - 1):
+                # Get the four corners of the cell
+                top_left = top_line.intersections[j]
+                top_right = top_line.intersections[j + 1]
+                
+                # Find corresponding points on bottom line
+                bottom_left = None
+                bottom_right = None
+                
+                # Find the closest intersections on the bottom line
+                for k in range(len(bottom_line.intersections)):
+                    if bottom_line.intersections[k][0] >= top_left[0]:
+                        bottom_left = bottom_line.intersections[k]
+                        if k + 1 < len(bottom_line.intersections):
+                            bottom_right = bottom_line.intersections[k + 1]
+                        break
+                
+                # Only create cell if we found all four corners
+                if bottom_left and bottom_right:
+                    cell = Cell(
+                        top_left=top_left,
+                        top_right=top_right,
+                        bottom_left=bottom_left,
+                        bottom_right=bottom_right
+                    )
+                    top_line.cells.append(cell)
+
     def toggle_lock(self):
         self.is_locked = not self.is_locked
         if self.is_locked:
             self.calculate_intersections()
+            self.calculate_cells()
         return self.is_locked, self.horizontal_lines, self.vertical_lines 
