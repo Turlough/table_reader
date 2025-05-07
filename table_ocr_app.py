@@ -304,12 +304,18 @@ class TableOCRApp(QMainWindow):
             # Display the cropped cell
             self.cell_image.setPixmap(scaled_pixmap)
             
-            # Update the text box with the current cell's text
+            # Perform OCR on the cell image
+            text = self.ocr.process_cell_image(cell_image)
+            
+            # Update the text box with the OCR result
+            self.cell_text.setText(text)
+            
+            # Update the table cell if it exists
             current_item = self.results_table.item(row, col)
             if current_item:
-                self.cell_text.setText(current_item.text())
+                current_item.setText(text)
             else:
-                self.cell_text.clear()
+                self.results_table.setItem(row, col, QTableWidgetItem(text))
 
 def main():
     app = QApplication(sys.argv)

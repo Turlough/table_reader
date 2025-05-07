@@ -120,3 +120,27 @@ class OCR(QObject):
             print(error_msg)
             self.ocr_error.emit(str(e))
             raise 
+
+    def process_cell_image(self, cell_image):
+        """Process a single cell image using Google Cloud Vision."""
+        try:
+            # Convert to bytes for Vision API
+            _, buffer = cv2.imencode('.png', cell_image)
+            content = buffer.tobytes()
+            
+            # Create Vision API image
+            image = vision.Image(content=content)
+            
+            # Perform text detection
+            response = self.client.document_text_detection(image=image)
+            
+            if response.error.message:
+                raise Exception(f"Vision API Error: {response.error.message}")
+            
+            # Extract text from response
+            text = response.full_text_annotation.text if response.full_text_annotation else ""
+            return text.strip()
+            
+        except Exception as e:
+            print(f"Error processing cell image: {e}")
+            return "" 
