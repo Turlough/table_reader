@@ -1,9 +1,12 @@
 import sys
 import os
+import cv2
+import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
                              QLabel, QScrollArea, QMessageBox, QPushButton, QVBoxLayout,
-                             QFileDialog, QDialog, QSpinBox, QDialogButtonBox)
-from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont
+                             QFileDialog, QDialog, QSpinBox, QDialogButtonBox, QTableWidget,
+                             QTableWidgetItem, QLineEdit)
+from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QImage
 from PyQt6.QtCore import Qt, QPoint, QLineF, QRectF
 
 # Import the new classes
@@ -17,6 +20,7 @@ class TableOCRApp(QMainWindow):
         self.image_path = None
         self.horizontal_lines = None
         self.vertical_lines = None
+        self.original_image = None  # Store the original image for cropping
         self.setWindowTitle("Handwritten Table OCR")
         self.setGeometry(100, 100, 1200, 750)
         
@@ -28,6 +32,7 @@ class TableOCRApp(QMainWindow):
         self.ocr.ocr_completed.connect(self.on_ocr_completed)
         self.ocr.ocr_error.connect(self.on_ocr_error)
         self.ocr.ocr_no_results.connect(self.on_ocr_no_results)
+        self.ocr.cell_processed.connect(self.on_cell_processed)
 
         central_widget = QWidget()
         self.setCentralWidget(central_widget)
@@ -85,16 +90,21 @@ class TableOCRApp(QMainWindow):
         right_panel_widget = QWidget()
         right_layout = QVBoxLayout(right_panel_widget)
         
-        # OCR Results display
-        self.results_widget = CustomLineWidget()
-        self.results_widget.setStyleSheet("border: 1px solid lightgrey; min-height: 500px;")
+        # Add cell image display
+        self.cell_image = QLabel()
+        self.cell_image.setStyleSheet("border: 1px solid lightgrey; min-height: 100px;")
+        self.cell_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        right_layout.addWidget(self.cell_image)
         
-        # Scroll Area for Results
-        scroll_area_right = QScrollArea()
-        scroll_area_right.setWidgetResizable(True)
-        scroll_area_right.setWidget(self.results_widget)
-        scroll_area_right.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        right_layout.addWidget(scroll_area_right, 1)
+        # Add cell text input
+        self.cell_text = QLineEdit()
+        self.cell_text.setPlaceholderText("Cell text will appear here")
+        right_layout.addWidget(self.cell_text)
+        
+        # Create table widget for results
+        self.results_table = QTableWidget()
+        self.results_table.setStyleSheet("border: 1px solid lightgrey;")
+        right_layout.addWidget(self.results_table)
         
         main_layout.addWidget(right_panel_widget, 1)
 
@@ -119,7 +129,23 @@ class TableOCRApp(QMainWindow):
         if not self.image_path:
             return
 
-        pixmap = QPixmap(self.image_path)
+        # Load image with OpenCV for cropping
+        self.original_image = cv2.imread(self.image_path)
+        if self.original_image is None:
+            error_msg = f"Could not load image: {self.image_path}"
+            QMessageBox.warning(self, "Error", error_msg)
+            self.image_path = None
+            return
+
+        # Convert to RGB for display
+        rgb_image = cv2.cvtColor(self.original_image, cv2.COLOR_BGR2RGB)
+        height, width = rgb_image.shape[:2]
+        
+        # Create QImage and QPixmap
+        bytes_per_line = 3 * width
+        q_image = QImage(rgb_image.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+        pixmap = QPixmap.fromImage(q_image)
+        
         if pixmap.isNull():
             error_msg = f"Could not load image: {self.image_path}"
             QMessageBox.warning(self, "Error", error_msg)
@@ -138,6 +164,15 @@ class TableOCRApp(QMainWindow):
             horizontal, vertical = dialog.get_dimensions()
             self.image_widget.create_lines(horizontal, vertical)
             self.lock_lines_button.setEnabled(True)
+            
+            # Create matching table in right panel
+            self.results_table.setRowCount(horizontal)
+            self.results_table.setColumnCount(vertical)
+            self.results_table.resizeColumnsToContents()
+            self.results_table.resizeRowsToContents()
+            
+            # Connect cell selection signal from image widget
+            self.image_widget.cell_selected.connect(self.on_cell_selected)
 
     def toggle_lines_lock(self):
         """Toggles the lines lock state."""
@@ -147,23 +182,55 @@ class TableOCRApp(QMainWindow):
             self.horizontal_lines = horizontal_lines
             self.vertical_lines = vertical_lines
 
-    # OCR-related methods
     def start_ocr(self):
         """Initiates OCR processing on the current image."""
         if not self.image_path:
             QMessageBox.information(self, "Info", "Please load an image first.")
             return
             
-        # The OCR process will now happen asynchronously through signals
+        if not self.horizontal_lines or not self.vertical_lines:
+            QMessageBox.information(self, "Info", "Please draw and lock the grid lines first.")
+            return
+            
+        # Calculate grid cells from the lines
+        grid_cells = []
+        for i in range(len(self.horizontal_lines) - 1):
+            row_cells = []
+            top_line = self.horizontal_lines[i]
+            bottom_line = self.horizontal_lines[i + 1]
+            
+            for j in range(len(self.vertical_lines) - 1):
+                left_line = self.vertical_lines[j]
+                right_line = self.vertical_lines[j + 1]
+                
+                # Get cell corners from line intersections
+                top_left = [left_line.start.x, top_line.start.y]
+                top_right = [right_line.start.x, top_line.start.y]
+                bottom_right = [right_line.start.x, bottom_line.start.y]
+                bottom_left = [left_line.start.x, bottom_line.start.y]
+                
+                cell = Cell(top_left, top_right, bottom_right, bottom_left)
+                row_cells.append(cell)
+            
+            grid_cells.append(row_cells)
+        
+        # Initialize results table
+        self.results_table.setRowCount(len(grid_cells))
+        self.results_table.setColumnCount(len(grid_cells[0]) if grid_cells else 0)
+        
+        # Start OCR processing
         try:
-            # Start OCR processing - results will come through signals
-            self.ocr.process_image(self.image_path)
+            self.ocr.process_image(self.image_path, grid_cells)
         except Exception as e:
-            # Handle any exceptions that weren't caught by the OCR signal system
             QMessageBox.critical(self, "OCR Error", f"Failed to start OCR processing: {e}")
-            print(f"Error starting OCR: {e}")
 
-    # Signal handlers (slots)
+    def on_cell_processed(self, row, col, text):
+        """Handles individual cell OCR results."""
+        item = QTableWidgetItem(text)
+        self.results_table.setItem(row, col, item)
+        self.results_table.resizeColumnsToContents()
+        self.results_table.resizeRowsToContents()
+
     def on_ocr_started(self):
         """Handles the start of OCR processing."""
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
@@ -171,6 +238,9 @@ class TableOCRApp(QMainWindow):
     def on_ocr_completed(self, header, data):
         """Handles successful OCR completion with data."""
         QApplication.restoreOverrideCursor()
+        # Set header labels
+        for col, text in enumerate(header):
+            self.results_table.setHorizontalHeaderItem(col, QTableWidgetItem(text))
         
     def on_ocr_error(self, error_message):
         """Handles OCR processing errors."""
@@ -182,6 +252,64 @@ class TableOCRApp(QMainWindow):
         """Handles the case when OCR completes but finds no data."""
         QApplication.restoreOverrideCursor()
         QMessageBox.information(self, "OCR Result", "No table data could be extracted from the image.")
+
+    def on_cell_selected(self, row, col):
+        """Handle cell selection from the image widget."""
+        # Highlight the corresponding cell in the table
+        self.results_table.selectRow(row)
+        self.results_table.selectColumn(col)
+        
+        # Get the cell boundaries from the lines
+        if self.horizontal_lines and self.vertical_lines:
+            # Get the cell boundaries from the scaled display
+            top = int(self.horizontal_lines[row].start.y)
+            bottom = int(self.horizontal_lines[row + 1].start.y)
+            left = int(self.vertical_lines[col].start.x)
+            right = int(self.vertical_lines[col + 1].start.x)
+            
+            # Get the original image dimensions
+            orig_height, orig_width = self.original_image.shape[:2]
+            
+            # Get the scaled display dimensions
+            display_width = self.image_widget.scaled_pixmap.width()
+            display_height = self.image_widget.scaled_pixmap.height()
+            
+            # Calculate the scaling factors
+            width_scale = orig_width / display_width
+            height_scale = orig_height / display_height
+            
+            # Scale the coordinates back to original image size
+            top = int(top * height_scale)
+            bottom = int(bottom * height_scale)
+            left = int(left * width_scale)
+            right = int(right * width_scale)
+            
+            # Crop the cell from the original image
+            cell_image = self.original_image[top:bottom, left:right]
+            
+            # Convert to RGB for display
+            cell_image_rgb = cv2.cvtColor(cell_image, cv2.COLOR_BGR2RGB)
+            height, width = cell_image_rgb.shape[:2]
+            
+            # Create QImage and QPixmap
+            bytes_per_line = 3 * width
+            q_image = QImage(cell_image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            pixmap = QPixmap.fromImage(q_image)
+            
+            # Scale the pixmap to fit the label while maintaining aspect ratio
+            scaled_pixmap = pixmap.scaled(self.cell_image.width(), self.cell_image.height(),
+                                        Qt.AspectRatioMode.KeepAspectRatio,
+                                        Qt.TransformationMode.SmoothTransformation)
+            
+            # Display the cropped cell
+            self.cell_image.setPixmap(scaled_pixmap)
+            
+            # Update the text box with the current cell's text
+            current_item = self.results_table.item(row, col)
+            if current_item:
+                self.cell_text.setText(current_item.text())
+            else:
+                self.cell_text.clear()
 
 def main():
     app = QApplication(sys.argv)

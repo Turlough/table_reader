@@ -1,4 +1,4 @@
-from PyQt6.QtCore import Qt, QPoint
+from PyQt6.QtCore import Qt, QPoint, pyqtSignal
 from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtWidgets import QWidget
 
@@ -33,6 +33,8 @@ class Line:
         self.cells: list[Cell] = []  # Store the calculated cells here
 
 class CustomLineWidget(QWidget):
+    cell_selected = pyqtSignal(int, int)  # Signal to emit row and column of selected cell
+    
     def __init__(self, parent=None):
         super().__init__(parent)
         self.pixmap = None
@@ -187,24 +189,41 @@ class CustomLineWidget(QWidget):
             self.draw_cells(painter)
     
     def mousePressEvent(self, event):
-        if event.button() == Qt.MouseButton.LeftButton and not self.is_locked:
-            # Check horizontal line endpoints
-            for line in self.horizontal_lines:
-                if line.start.contains(event.position()):
-                    self.dragging_endpoint = (line, 'start', 'horizontal')
-                    return
-                if line.end.contains(event.position()):
-                    self.dragging_endpoint = (line, 'end', 'horizontal')
-                    return
-            
-            # Check vertical line endpoints
-            for line in self.vertical_lines:
-                if line.start.contains(event.position()):
-                    self.dragging_endpoint = (line, 'start', 'vertical')
-                    return
-                if line.end.contains(event.position()):
-                    self.dragging_endpoint = (line, 'end', 'vertical')
-                    return
+        if event.button() == Qt.MouseButton.LeftButton:
+            if not self.is_locked:
+                # Check horizontal line endpoints
+                for line in self.horizontal_lines:
+                    if line.start.contains(event.position()):
+                        self.dragging_endpoint = (line, 'start', 'horizontal')
+                        return
+                    if line.end.contains(event.position()):
+                        self.dragging_endpoint = (line, 'end', 'horizontal')
+                        return
+                
+                # Check vertical line endpoints
+                for line in self.vertical_lines:
+                    if line.start.contains(event.position()):
+                        self.dragging_endpoint = (line, 'start', 'vertical')
+                        return
+                    if line.end.contains(event.position()):
+                        self.dragging_endpoint = (line, 'end', 'vertical')
+                        return
+            else:
+                # If lines are locked, check for cell selection
+                x, y = event.position().x(), event.position().y()
+                
+                # Find the cell that contains the click
+                for row in range(len(self.horizontal_lines) - 1):
+                    top = self.horizontal_lines[row].start.y
+                    bottom = self.horizontal_lines[row + 1].start.y
+                    
+                    for col in range(len(self.vertical_lines) - 1):
+                        left = self.vertical_lines[col].start.x
+                        right = self.vertical_lines[col + 1].start.x
+                        
+                        if (left <= x <= right) and (top <= y <= bottom):
+                            self.cell_selected.emit(row, col)
+                            return
     
     def mouseMoveEvent(self, event):
         if self.dragging_endpoint is not None and not self.is_locked:
