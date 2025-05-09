@@ -44,6 +44,7 @@ class CustomLineWidget(QWidget):
         self.dragging_endpoint = None
         self.is_locked = False
         self.setMouseTracking(True)
+        self.highlighted_cell = None  # Store the currently highlighted cell
         
     def set_image(self, pixmap):
         self.pixmap = pixmap
@@ -135,6 +136,11 @@ class CustomLineWidget(QWidget):
                     QPoint(cell.top_left[0], cell.top_left[1])
                 )
 
+    def highlight_cell(self, row, col):
+        """Highlight a specific cell in the grid."""
+        self.highlighted_cell = (row, col)
+        self.update()  # Trigger a repaint
+
     def paintEvent(self, event):
         painter = QPainter(self)
         
@@ -182,8 +188,22 @@ class CustomLineWidget(QWidget):
                 painter.drawEllipse(QPoint(line.start.x, line.start.y), line.start.radius, line.start.radius)
                 painter.drawEllipse(QPoint(line.end.x, line.end.y), line.end.radius, line.end.radius)
 
+            # Draw highlighted cell if one is selected
+            if self.highlighted_cell and self.is_locked:
+                row, col = self.highlighted_cell
+                if row < len(self.horizontal_lines) - 1 and col < len(self.vertical_lines) - 1:
+                    # Get cell boundaries
+                    top = self.horizontal_lines[row].start.y
+                    bottom = self.horizontal_lines[row + 1].start.y
+                    left = self.vertical_lines[col].start.x
+                    right = self.vertical_lines[col + 1].start.x
+                    
+                    # Draw highlighted cell with semi-transparent yellow
+                    pen.setColor(QColor(255, 255, 0, 128))  # Semi-transparent yellow
+                    painter.setPen(pen)
+                    painter.setBrush(QColor(255, 255, 0, 64))  # More transparent yellow for fill
+                    painter.drawRect(left, top, right - left, bottom - top)
 
-    
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
             if not self.is_locked:

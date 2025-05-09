@@ -112,6 +112,7 @@ class TableOCRApp(QMainWindow):
         # Create table widget for results
         self.results_table = QTableWidget()
         self.results_table.setStyleSheet("border: 1px solid lightgrey;")
+        self.results_table.cellClicked.connect(self.on_table_cell_clicked)  # Connect cell click signal
         right_layout.addWidget(self.results_table)
         
         main_layout.addWidget(right_panel_widget, 1)
@@ -420,18 +421,85 @@ class TableOCRApp(QMainWindow):
                     
                     # Update the table cell
                     self.results_table.setItem(row, col, QTableWidgetItem(text))
-                    
-                    # Process events to update the UI
-                    QApplication.processEvents()
 
                     # Resize columns to fit content
                     self.results_table.resizeColumnsToContents()
+
+                    # Process events to update the UI
+                    QApplication.processEvents()
+
+                    
 
 
         finally:
             # Re-enable the button and restore cursor
             self.ocr_all_button.setEnabled(True)
             QApplication.restoreOverrideCursor()
+
+    def on_table_cell_clicked(self, row, col):
+        """Handle cell selection from the results table."""
+        # Get the text from the selected cell
+        item = self.results_table.item(row, col)
+        if item:
+            self.cell_text.setText(item.text())
+            
+            # Get the cell boundaries from the lines
+            if self.horizontal_lines and self.vertical_lines:
+                # Get the cell boundaries from the scaled display
+                top = int(self.horizontal_lines[row].start.y)
+                bottom = int(self.horizontal_lines[row + 1].start.y)
+                left = int(self.vertical_lines[col].start.x)
+                right = int(self.vertical_lines[col + 1].start.x)
+                
+                # Get the original image dimensions
+                orig_height, orig_width = self.original_image.shape[:2]
+                
+                # Get the scaled display dimensions
+                display_width = self.image_widget.scaled_pixmap.width()
+                display_height = self.image_widget.scaled_pixmap.height()
+                
+                # Calculate the scaling factors
+                width_scale = orig_width / display_width
+                height_scale = orig_height / display_height
+                
+                # Calculate image offset within the widget
+                x_offset = (self.image_widget.width() - display_width) // 2
+                y_offset = (self.image_widget.height() - display_height) // 2
+                
+                # Adjust coordinates by the offset before scaling
+                top = int((top - y_offset) * height_scale)
+                bottom = int((bottom - y_offset) * height_scale)
+                left = int((left - x_offset) * width_scale)
+                right = int((right - x_offset) * width_scale)
+                
+                # Ensure coordinates are within image bounds
+                top = max(0, min(top, orig_height))
+                bottom = max(0, min(bottom, orig_height))
+                left = max(0, min(left, orig_width))
+                right = max(0, min(right, orig_width))
+                
+                # Crop the cell from the original image
+                cropped_image = self.original_image[top:bottom, left:right]
+                
+                # Convert to RGB for display
+                cropped_image_rgb = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                height, width = cropped_image_rgb.shape[:2]
+                
+                # Create QImage and QPixmap
+                bytes_per_line = 3 * width
+                q_image = QImage(cropped_image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+                pixmap = QPixmap.fromImage(q_image)
+                
+                # Scale the pixmap to fit the label's current dimensions while maintaining aspect ratio
+                scaled_pixmap = pixmap.scaled(self.cell_image.width(), self.cell_image.height(),
+                                            Qt.AspectRatioMode.KeepAspectRatio,
+                                            Qt.TransformationMode.SmoothTransformation)
+                
+                # Display the cropped cell
+                self.cell_image.setPixmap(scaled_pixmap)
+                
+                # Highlight the corresponding cell in the image widget
+                self.image_widget.highlight_cell(row, col)
 
 def main():
     app = QApplication(sys.argv)
