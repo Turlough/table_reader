@@ -245,6 +245,9 @@ class TableOCRApp(QMainWindow):
         for col, text in enumerate(header):
             self.results_table.setHorizontalHeaderItem(col, QTableWidgetItem(text))
         
+        # Resize columns to fit content
+        self.results_table.resizeColumnsToContents()
+        
     def on_ocr_error(self, error_message):
         """Handles OCR processing errors."""
         QApplication.restoreOverrideCursor()
@@ -329,6 +332,9 @@ class TableOCRApp(QMainWindow):
                 current_item.setText(text)
             else:
                 self.results_table.setItem(row, col, QTableWidgetItem(text))
+            
+            # Resize columns to fit content
+            self.results_table.resizeColumnsToContents()
 
 def main():
     app = QApplication(sys.argv)
