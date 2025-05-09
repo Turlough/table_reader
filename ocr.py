@@ -139,7 +139,7 @@ class OCR(QObject):
             
             # Extract text from response
             text = response.full_text_annotation.text if response.full_text_annotation else ""
-            return text.strip()
+            return text.strip().replace("\n", " ")
             
         except Exception as e:
             print(f"Error processing cell image: {e}")

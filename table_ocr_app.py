@@ -70,6 +70,11 @@ class TableOCRApp(QMainWindow):
         self.ocr_button.setEnabled(False)
         button_layout.addWidget(self.ocr_button)
 
+        self.ocr_all_button = QPushButton("OCR All")
+        self.ocr_all_button.clicked.connect(self.process_all_cells)
+        self.ocr_all_button.setEnabled(False)
+        button_layout.addWidget(self.ocr_all_button)
+
         button_layout.addStretch() # Pushes buttons to the left
         left_layout.addLayout(button_layout) # Add the button row layout
 
@@ -159,6 +164,7 @@ class TableOCRApp(QMainWindow):
         self.image_widget.set_image(scaled_pixmap)
         self.draw_lines_button.setEnabled(True)
         self.ocr_button.setEnabled(True)
+        self.ocr_all_button.setEnabled(True)
 
     def show_line_dialog(self):
         """Shows the dialog to create lines."""
@@ -335,6 +341,97 @@ class TableOCRApp(QMainWindow):
             
             # Resize columns to fit content
             self.results_table.resizeColumnsToContents()
+
+    def process_all_cells(self):
+        """Process all cells in the grid for OCR."""
+        if not self.horizontal_lines or not self.vertical_lines:
+            QMessageBox.information(self, "Info", "Please draw and lock the grid lines first.")
+            return
+
+        # Disable the button while processing
+        self.ocr_all_button.setEnabled(False)
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+
+        try:
+            # Iterate through all cells
+            for row in range(len(self.horizontal_lines) - 1):
+                for col in range(len(self.vertical_lines) - 1):
+                    # Get the cell boundaries from the scaled display
+                    top = int(self.horizontal_lines[row].start.y)
+                    bottom = int(self.horizontal_lines[row + 1].start.y)
+                    left = int(self.vertical_lines[col].start.x)
+                    right = int(self.vertical_lines[col + 1].start.x)
+                    
+                    # Get the original image dimensions
+                    orig_height, orig_width = self.original_image.shape[:2]
+                    
+                    # Get the scaled display dimensions
+                    display_width = self.image_widget.scaled_pixmap.width()
+                    display_height = self.image_widget.scaled_pixmap.height()
+                    
+                    # Calculate the scaling factors
+                    width_scale = orig_width / display_width
+                    height_scale = orig_height / display_height
+                    
+                    # Calculate image offset within the widget
+                    x_offset = (self.image_widget.width() - display_width) // 2
+                    y_offset = (self.image_widget.height() - display_height) // 2
+                    
+                    # Adjust coordinates by the offset before scaling
+                    top = int((top - y_offset) * height_scale)
+                    bottom = int((bottom - y_offset) * height_scale)
+                    left = int((left - x_offset) * width_scale)
+                    right = int((right - x_offset) * width_scale)
+                    
+                    # Ensure coordinates are within image bounds
+                    top = max(0, min(top, orig_height))
+                    bottom = max(0, min(bottom, orig_height))
+                    left = max(0, min(left, orig_width))
+                    right = max(0, min(right, orig_width))
+                    
+                    # Crop the cell from the original image
+                    cropped_image = self.original_image[top:bottom, left:right]
+                    
+                    # Convert to RGB for display
+                    cropped_image_rgb = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+                    height, width = cropped_image_rgb.shape[:2]
+                    
+                    # Create QImage and QPixmap
+                    bytes_per_line = 3 * width
+                    q_image = QImage(cropped_image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+                    pixmap = QPixmap.fromImage(q_image)
+                    
+                    # Scale the pixmap to fit the label's current dimensions while maintaining aspect ratio
+                    scaled_pixmap = pixmap.scaled(self.cell_image.width(), self.cell_image.height(),
+                                                Qt.AspectRatioMode.KeepAspectRatio,
+                                                Qt.TransformationMode.SmoothTransformation)
+                    
+                    # Display the cropped cell
+                    self.cell_image.setPixmap(scaled_pixmap)
+                    
+                    # Process events to update the UI
+                    QApplication.processEvents()
+                    
+                    # Perform OCR on the cell image
+                    text = self.ocr.process_cell_image(cropped_image)
+                    
+                    # Update the text box with the OCR result
+                    self.cell_text.setText(text)
+                    
+                    # Update the table cell
+                    self.results_table.setItem(row, col, QTableWidgetItem(text))
+                    
+                    # Process events to update the UI
+                    QApplication.processEvents()
+
+                    # Resize columns to fit content
+                    self.results_table.resizeColumnsToContents()
+
+
+        finally:
+            # Re-enable the button and restore cursor
+            self.ocr_all_button.setEnabled(True)
+            QApplication.restoreOverrideCursor()
 
 def main():
     app = QApplication(sys.argv)
