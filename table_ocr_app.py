@@ -5,7 +5,7 @@ import numpy as np
 from PyQt6.QtWidgets import (QApplication, QMainWindow, QWidget, QHBoxLayout,
                              QLabel, QScrollArea, QMessageBox, QPushButton, QVBoxLayout,
                              QFileDialog, QDialog, QSpinBox, QDialogButtonBox, QTableWidget,
-                             QTableWidgetItem, QLineEdit)
+                             QTableWidgetItem, QLineEdit, QSizePolicy)
 from PyQt6.QtGui import QPixmap, QPainter, QPen, QColor, QFont, QImage
 from PyQt6.QtCore import Qt, QPoint, QLineF, QRectF
 
@@ -88,12 +88,15 @@ class TableOCRApp(QMainWindow):
 
         # --- Right Panel: OCR Results ---
         right_panel_widget = QWidget()
+        right_panel_widget.setFixedWidth(700)  # Set fixed width for the right panel
         right_layout = QVBoxLayout(right_panel_widget)
         
         # Add cell image display
         self.cell_image = QLabel()
-        self.cell_image.setStyleSheet("border: 1px solid lightgrey; min-height: 100px;")
+        self.cell_image.setStyleSheet("border: 1px solid lightgrey;")
         self.cell_image.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.cell_image.setFixedHeight(200)  # Set fixed height only
+        self.cell_image.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)  # Allow horizontal expansion
         right_layout.addWidget(self.cell_image)
         
         # Add cell text input
@@ -258,7 +261,7 @@ class TableOCRApp(QMainWindow):
         # Highlight the corresponding cell in the table
         self.results_table.selectRow(row)
         self.results_table.selectColumn(col)
-        
+
         # Get the cell boundaries from the lines
         if self.horizontal_lines and self.vertical_lines:
             # Get the cell boundaries from the scaled display
@@ -278,25 +281,35 @@ class TableOCRApp(QMainWindow):
             width_scale = orig_width / display_width
             height_scale = orig_height / display_height
             
-            # Scale the coordinates back to original image size
-            top = int(top * height_scale)
-            bottom = int(bottom * height_scale)
-            left = int(left * width_scale)
-            right = int(right * width_scale)
+            # Calculate image offset within the widget
+            x_offset = (self.image_widget.width() - display_width) // 2
+            y_offset = (self.image_widget.height() - display_height) // 2
+            
+            # Adjust coordinates by the offset before scaling
+            top = int((top - y_offset) * height_scale)
+            bottom = int((bottom - y_offset) * height_scale)
+            left = int((left - x_offset) * width_scale)
+            right = int((right - x_offset) * width_scale)
+            
+            # Ensure coordinates are within image bounds
+            top = max(0, min(top, orig_height))
+            bottom = max(0, min(bottom, orig_height))
+            left = max(0, min(left, orig_width))
+            right = max(0, min(right, orig_width))
             
             # Crop the cell from the original image
-            cell_image = self.original_image[top:bottom, left:right]
+            cropped_image = self.original_image[top:bottom, left:right]
             
             # Convert to RGB for display
-            cell_image_rgb = cv2.cvtColor(cell_image, cv2.COLOR_BGR2RGB)
-            height, width = cell_image_rgb.shape[:2]
+            cropped_image_rgb = cv2.cvtColor(cropped_image, cv2.COLOR_BGR2RGB)
+            height, width = cropped_image_rgb.shape[:2]
             
             # Create QImage and QPixmap
             bytes_per_line = 3 * width
-            q_image = QImage(cell_image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
+            q_image = QImage(cropped_image_rgb.data, width, height, bytes_per_line, QImage.Format.Format_RGB888)
             pixmap = QPixmap.fromImage(q_image)
             
-            # Scale the pixmap to fit the label while maintaining aspect ratio
+            # Scale the pixmap to fit the label's current dimensions while maintaining aspect ratio
             scaled_pixmap = pixmap.scaled(self.cell_image.width(), self.cell_image.height(),
                                         Qt.AspectRatioMode.KeepAspectRatio,
                                         Qt.TransformationMode.SmoothTransformation)
@@ -305,7 +318,7 @@ class TableOCRApp(QMainWindow):
             self.cell_image.setPixmap(scaled_pixmap)
             
             # Perform OCR on the cell image
-            text = self.ocr.process_cell_image(cell_image)
+            text = self.ocr.process_cell_image(cropped_image)
             
             # Update the text box with the OCR result
             self.cell_text.setText(text)

@@ -3,7 +3,7 @@ from PyQt6.QtGui import QPainter, QPen, QColor
 from PyQt6.QtWidgets import QWidget
 
 class LineEndpoint:
-    def __init__(self, x, y, radius=5):
+    def __init__(self, x, y, radius=7):
         self.x = x
         self.y = y
         self.radius = radius
@@ -181,12 +181,8 @@ class CustomLineWidget(QWidget):
             for line in self.vertical_lines:
                 painter.drawEllipse(QPoint(line.start.x, line.start.y), line.start.radius, line.start.radius)
                 painter.drawEllipse(QPoint(line.end.x, line.end.y), line.end.radius, line.end.radius)
-            
-            # Draw intersection points
-            self.draw_intersection_points(painter)
-            
-            # Draw cells
-            self.draw_cells(painter)
+
+
     
     def mousePressEvent(self, event):
         if event.button() == Qt.MouseButton.LeftButton:
